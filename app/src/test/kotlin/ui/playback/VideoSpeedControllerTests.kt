@@ -15,9 +15,9 @@ class VideoSpeedControllerTests : FunSpec({
 		VideoSpeedController(mockk(relaxed = true)).resetSpeedToDefault()
 	}
 
-	test("VideoSpeedController.SpeedSteps uses intervals of 0.25") {
+	test("VideoSpeedController.SpeedSteps starts at 1.0 and uses intervals of 0.25") {
 		VideoSpeedController.SpeedSteps.entries.forEachIndexed { i, v ->
-			v.speed.shouldBe((i + 1) * 0.25f plusOrMinus 1.0E-4F)
+			v.speed.shouldBe((1.0f + i * 0.25f) plusOrMinus 1.0E-4F)
 		}
 	}
 

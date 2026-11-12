@@ -16,7 +16,8 @@ android {
 		// Release version
 		applicationId = namespace
 		versionName = project.getVersionName()
-		versionCode = getVersionCode(versionName!!)
+		// Custom builds use a version code above the official releases
+		versionCode = maxOf(getVersionCode(versionName!!), 200_100)
 	}
 
 	buildFeatures {

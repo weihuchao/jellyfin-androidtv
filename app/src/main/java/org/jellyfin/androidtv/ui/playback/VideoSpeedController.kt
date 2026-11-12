@@ -5,9 +5,6 @@ class VideoSpeedController(
 ) {
 	enum class SpeedSteps(val speed: Float) {
 		// Use named parameter so detekt knows these aren't magic values
-		SPEED_0_25(speed = 0.25f),
-		SPEED_0_50(speed = 0.5f),
-		SPEED_0_75(speed = 0.75f),
 		SPEED_1_00(speed = 1.0f),
 		SPEED_1_25(speed = 1.25f),
 		SPEED_1_50(speed = 1.50f),
