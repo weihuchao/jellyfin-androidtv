@@ -62,8 +62,14 @@ public class LeanbackOverlayFragment extends PlaybackSupportFragment {
     @Override
     public void showControlsOverlay(boolean runAnimation) {
         if (shouldShowOverlay) {
+            boolean wasVisible = isControlsOverlayVisible();
             super.showControlsOverlay(runAnimation);
             playerAdapter.getMasterOverlayFragment().show();
+
+            if (!wasVisible) {
+                // Select the action that was used last when the controls appear
+                playerGlue.focusPreferredAction();
+            }
         }
     }
 
@@ -92,6 +98,8 @@ public class LeanbackOverlayFragment extends PlaybackSupportFragment {
     }
 
     public void setFading(boolean fadingEnabled) {
+        // Keep the controls visible while a popup menu is open
+        setControlsOverlayAutoHideEnabled(fadingEnabled);
         playerAdapter.getMasterOverlayFragment().setFadingEnabled(fadingEnabled);
     }
 

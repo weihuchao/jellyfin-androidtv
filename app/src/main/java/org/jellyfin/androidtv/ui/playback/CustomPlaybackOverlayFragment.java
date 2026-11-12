@@ -124,6 +124,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private boolean mIsVisible = false;
     private boolean mPopupPanelVisible = false;
     private boolean navigating = false;
+    // Set when a center key press was used to show the controls, the matching key up event must
+    // not activate the action that is focused after the controls became visible
+    private boolean mSwallowNextCenterKeyUp = false;
 
     protected LeanbackOverlayFragment leanbackOverlayFragment;
 
@@ -417,6 +420,12 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         } else if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                 event.startTracking();
+                // Show the playback controls without changing the playback state. The key up
+                // event is swallowed to prevent it from activating the focused action.
+                if (leanbackOverlayFragment != null && !isControlsOverlayVisible()) {
+                    mSwallowNextCenterKeyUp = true;
+                    leanbackOverlayFragment.showControlsOverlay(true);
+                }
                 return true;
             }
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
@@ -474,13 +483,22 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private View.OnKeyListener keyListener = new View.OnKeyListener() {
         @Override
         public boolean onKey(View v, int keyCode, KeyEvent event) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                // The center key press that showed the controls must not activate the focused action
+                if (mSwallowNextCenterKeyUp) {
+                    mSwallowNextCenterKeyUp = false;
+                    return true;
+                }
+            } else if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (!mGuideVisible)
                     leanbackOverlayFragment.setShouldShowOverlay(true);
                 else {
                     leanbackOverlayFragment.setShouldShowOverlay(false);
                     leanbackOverlayFragment.hideOverlay();
                 }
+
+                // Any interaction restarts the timer that hides the playback controls
+                if (mFadeEnabled) startFadeTimer();
 
                 if (binding.skipOverlay.getVisible()) {
                     // Hide without doing anything
@@ -586,7 +604,9 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                         }
                     }
 
-                    if (!mIsVisible) {
+                    if (!isControlsOverlayVisible()) {
+                        // The controls are hidden: left and right must not open the Leanback
+                        // seek ui, which pauses the playback while seeking.
                         if (!playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                                 setFadingEnabled(true);
@@ -599,17 +619,17 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                             }
                         }
 
-                        if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)
-                                && playbackControllerContainer.getValue().getPlaybackController().canSeek()) {
-                            // if the player is playing and the overlay is hidden, this will pause
-                            // if the player is paused and then 'back' is pressed to hide the overlay, this will play
-                            playbackControllerContainer.getValue().getPlaybackController().playPause();
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                            // Only show the controls, the playback state is not changed. The key up
+                            // event is swallowed to prevent it from activating the focused action.
+                            mSwallowNextCenterKeyUp = true;
                             return true;
                         }
+                    } else if (leanbackOverlayFragment != null) {
+                        // The controls are visible: the transport glue moves the focus between
+                        // the actions and the progress bar.
+                        if (leanbackOverlayFragment.getPlayerGlue().handleNavigationKey(keyCode)) return true;
                     }
-
-                    //and then manage our fade timer
-                    if (mFadeEnabled) startFadeTimer();
                 }
             }
 
@@ -652,9 +672,16 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     private void startFadeTimer() {
         mFadeEnabled = true;
         mHandler.removeCallbacks(mHideTask);
-        mHandler.postDelayed(mHideTask, 6000);
+        mHandler.postDelayed(mHideTask, getResources().getInteger(R.integer.playback_controls_auto_hide_timeout));
         WindowCompat.setDecorFitsSystemWindows(requireActivity().getWindow(), false);
         WindowCompat.getInsetsController(requireActivity().getWindow(), requireActivity().getWindow().getDecorView()).hide(WindowInsetsCompat.Type.systemBars());
+    }
+
+    /**
+     * @return true if the playback controls are currently shown
+     */
+    private boolean isControlsOverlayVisible() {
+        return leanbackOverlayFragment != null && leanbackOverlayFragment.isControlsOverlayVisible();
     }
 
     @Override

@@ -21,6 +21,7 @@ import androidx.leanback.widget.PlaybackRowPresenter;
 import androidx.leanback.widget.PlaybackTransportRowPresenter;
 import androidx.leanback.widget.PlaybackTransportRowView;
 import androidx.leanback.widget.RowPresenter;
+import androidx.leanback.widget.SeekBar;
 
 import org.jellyfin.androidtv.R;
 import org.jellyfin.androidtv.preference.UserPreferences;
@@ -77,11 +78,20 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
     // Injected views
     private TextView mEndsText = null;
 
+    // Focus groups of the playback controls
+    private LinearLayout mButtonRef = null;
+    private LinearLayout mSecondaryButtonRef = null;
+    private SeekBar mProgressBar = null;
+
+    // The action that was activated last, used to restore the selection when the controls appear
+    private Action mLastActivatedAction = null;
+
+    // The action that was focused last, used to restore the position in the controls
+    private Action mLastFocusedAction = null;
+
     private final Handler mHandler = new Handler();
     private Runnable mRefreshEndTime;
     private Runnable mRefreshViewVisibility;
-
-    private LinearLayout mButtonRef;
 
     CustomPlaybackTransportControlGlue(Context context, VideoPlayerAdapter playerAdapter, PlaybackController playbackController) {
         super(context, playerAdapter);
@@ -131,6 +141,15 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
             protected RowPresenter.ViewHolder createRowViewHolder(ViewGroup parent) {
                 RowPresenter.ViewHolder vh = super.createRowViewHolder(parent);
 
+                // Keep track of the focus groups of the transport row
+                LinearLayout rowView = (LinearLayout) vh.view;
+                PlaybackTransportRowView bar = (PlaybackTransportRowView) rowView.getChildAt(1);
+                mButtonRef = (LinearLayout) ((ViewGroup) bar.getChildAt(0)).getChildAt(0);
+                mProgressBar = (SeekBar) bar.getChildAt(1);
+                ViewGroup secondaryDock = (ViewGroup) bar.getChildAt(2)
+                        .findViewById(androidx.leanback.R.id.secondary_controls_dock);
+                mSecondaryButtonRef = (LinearLayout) secondaryDock.getChildAt(0);
+
                 ClockBehavior showClock = KoinJavaComponent.<UserPreferences>get(UserPreferences.class).get(UserPreferences.Companion.getClockBehavior());
 
                 if (showClock == ClockBehavior.ALWAYS || showClock == ClockBehavior.IN_VIDEO) {
@@ -139,11 +158,7 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
                     mEndsText.setTextAppearance(context, androidx.leanback.R.style.Widget_Leanback_PlaybackControlsTimeStyle);
                     setEndTime();
 
-                    LinearLayout view = (LinearLayout) vh.view;
-
-                    PlaybackTransportRowView bar = (PlaybackTransportRowView) view.getChildAt(1);
                     FrameLayout v = (FrameLayout) bar.getChildAt(0);
-                    mButtonRef = (LinearLayout) v.getChildAt(0);
 
                     bar.removeViewAt(0);
                     RelativeLayout rl = new RelativeLayout(context);
@@ -166,8 +181,12 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
 
             @Override
             protected void onProgressBarClicked(PlaybackTransportRowPresenter.ViewHolder vh) {
-                CustomPlaybackTransportControlGlue controlglue = CustomPlaybackTransportControlGlue.this;
-                controlglue.onActionClicked(controlglue.playPauseAction);
+                // Clicking the progress bar must not change the playback state
+            }
+
+            @Override
+            public void onReappear(RowPresenter.ViewHolder rowViewHolder) {
+                // Don't move the focus back to the progress bar, the app manages the selection
             }
 
             @Override
@@ -234,17 +253,21 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
         if (secondaryActionsAdapter.size() > 0)
             secondaryActionsAdapter.clear();
 
-        // Primary Items
-        primaryActionsAdapter.add(playPauseAction);
         VideoPlayerAdapter playerAdapter = getPlayerAdapter();
 
-        if (playerAdapter.canSeek()) {
-            primaryActionsAdapter.add(rewindAction);
-            primaryActionsAdapter.add(fastForwardAction);
+        // Primary Items (shown above the progress bar)
+        if (!playerAdapter.isLiveTv()) {
+            primaryActionsAdapter.add(playbackSpeedAction);
         }
+
+        primaryActionsAdapter.add(playPauseAction);
 
         if (playerAdapter.hasSubs()) {
             primaryActionsAdapter.add(closedCaptionsAction);
+        }
+
+        if (playerAdapter.hasNextItem()) {
+            primaryActionsAdapter.add(skipNextAction);
         }
 
         if (playerAdapter.hasMultiAudio()) {
@@ -256,13 +279,16 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
             primaryActionsAdapter.add(guideAction);
         }
 
-        // Secondary Items
-        if (playerAdapter.isLiveTv()) {
-            secondaryActionsAdapter.add(previousLiveTvChannelAction);
-            if (playerAdapter.canRecordLiveTv()) {
-                secondaryActionsAdapter.add(recordAction);
-                recordingStateChanged();
-            }
+        // Secondary Items (shown below the progress bar)
+        secondaryActionsAdapter.add(zoomAction);
+
+        if (!playerAdapter.isLiveTv()) {
+            secondaryActionsAdapter.add(selectQualityAction);
+        }
+
+        if (playerAdapter.canSeek()) {
+            secondaryActionsAdapter.add(rewindAction);
+            secondaryActionsAdapter.add(fastForwardAction);
         }
 
         if (playerAdapter.hasPreviousItem()) {
@@ -277,20 +303,184 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
             secondaryActionsAdapter.add(chapterAction);
         }
 
-        if (!playerAdapter.isLiveTv()) {
-            secondaryActionsAdapter.add(playbackSpeedAction);
-            secondaryActionsAdapter.add(selectQualityAction);
+        if (playerAdapter.isLiveTv()) {
+            secondaryActionsAdapter.add(previousLiveTvChannelAction);
+            if (playerAdapter.canRecordLiveTv()) {
+                secondaryActionsAdapter.add(recordAction);
+                recordingStateChanged();
+            }
         }
-
-        secondaryActionsAdapter.add(zoomAction);
     }
 
     @Override
     public void onActionClicked(Action action) {
+        // Remember the action to restore the selection when the controls appear again
+        mLastActivatedAction = action;
+
         if (action instanceof AndroidAction) {
             ((AndroidAction) action).onActionClicked(getPlayerAdapter());
         }
         notifyActionChanged(action);
+    }
+
+    /**
+     * Select the action that was activated last, the action that was focused last, the playback
+     * speed action or the play/pause action. Called when the playback controls become visible.
+     */
+    public void focusPreferredAction() {
+        Action action = mLastActivatedAction;
+        if (action == null || findActionView(action) == null) action = mLastFocusedAction;
+        if (action == null || findActionView(action) == null) action = playbackSpeedAction;
+        if (findActionView(action) == null) action = playPauseAction;
+
+        focusAction(action);
+    }
+
+    /**
+     * Move the focus between the actions and the progress bar.
+     *
+     * @return true if the key was handled
+     */
+    public boolean handleNavigationKey(int keyCode) {
+        View focused = getFocusedControl();
+        if (focused == null) return false;
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                // The progress bar uses left and right to skip forward or backward. The Leanback
+                // seek ui is not used because it pauses the playback while seeking.
+                if (focused == mProgressBar) {
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                        playbackController.fastForward();
+                    } else {
+                        playbackController.rewind();
+                    }
+                    return true;
+                }
+
+                int step = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
+                ViewGroup row = getControlRow(focused);
+                if (row == null) return false;
+                return focusSibling(row, focused, step);
+            }
+
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (isInRow(focused, mSecondaryButtonRef)) return focusProgressBar();
+                if (focused == mProgressBar) return focusControlRow(mButtonRef);
+                return false;
+
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (isInRow(focused, mButtonRef)) return focusProgressBar();
+                if (focused == mProgressBar) return focusControlRow(mSecondaryButtonRef);
+                return false;
+        }
+
+        return false;
+    }
+
+    private void focusAction(Action action) {
+        View view = findActionView(action);
+        if (view == null) return;
+
+        view.requestFocus();
+        mLastFocusedAction = action;
+    }
+
+    private Action findActionForView(View view) {
+        if (view == null) return null;
+
+        if (primaryActionsAdapter != null && mButtonRef != null) {
+            int index = mButtonRef.indexOfChild(view);
+            if (index >= 0 && index < primaryActionsAdapter.size()) {
+                return (Action) primaryActionsAdapter.get(index);
+            }
+        }
+
+        if (secondaryActionsAdapter != null && mSecondaryButtonRef != null) {
+            int index = mSecondaryButtonRef.indexOfChild(view);
+            if (index >= 0 && index < secondaryActionsAdapter.size()) {
+                return (Action) secondaryActionsAdapter.get(index);
+            }
+        }
+
+        return null;
+    }
+
+    private View findActionView(Action action) {
+        if (primaryActionsAdapter == null || secondaryActionsAdapter == null) return null;
+
+        int index = primaryActionsAdapter.indexOf(action);
+        if (index >= 0 && mButtonRef != null && index < mButtonRef.getChildCount()) {
+            return mButtonRef.getChildAt(index);
+        }
+
+        index = secondaryActionsAdapter.indexOf(action);
+        if (index >= 0 && mSecondaryButtonRef != null && index < mSecondaryButtonRef.getChildCount()) {
+            return mSecondaryButtonRef.getChildAt(index);
+        }
+
+        return null;
+    }
+
+    private View getFocusedControl() {
+        if (mProgressBar != null && mProgressBar.isFocused()) return mProgressBar;
+        if (mButtonRef != null) {
+            View focused = mButtonRef.getFocusedChild();
+            if (focused != null) return focused;
+        }
+        if (mSecondaryButtonRef != null) {
+            View focused = mSecondaryButtonRef.getFocusedChild();
+            if (focused != null) return focused;
+        }
+        return null;
+    }
+
+    private ViewGroup getControlRow(View focused) {
+        if (isInRow(focused, mButtonRef)) return mButtonRef;
+        if (isInRow(focused, mSecondaryButtonRef)) return mSecondaryButtonRef;
+        return null;
+    }
+
+    private boolean isInRow(View focused, ViewGroup row) {
+        return row != null && row.indexOfChild(focused) >= 0;
+    }
+
+    private boolean focusSibling(ViewGroup row, View focused, int step) {
+        int target = row.indexOfChild(focused) + step;
+        // The edge of the row is reached, the selection stays where it is
+        if (target < 0 || target >= row.getChildCount()) return true;
+
+        View child = row.getChildAt(target);
+        if (child == null) return true;
+
+        child.requestFocus();
+        mLastFocusedAction = findActionForView(child);
+        return true;
+    }
+
+    private boolean focusProgressBar() {
+        if (mProgressBar == null) return false;
+        mProgressBar.requestFocus();
+        return true;
+    }
+
+    private boolean focusControlRow(ViewGroup row) {
+        if (row == null || row.getChildCount() == 0) return false;
+
+        // Restore the action that was focused last in this row
+        if (mLastFocusedAction != null) {
+            View view = findActionView(mLastFocusedAction);
+            if (view != null && row.indexOfChild(view) >= 0) {
+                view.requestFocus();
+                return true;
+            }
+        }
+
+        View child = row.getChildAt(0);
+        child.requestFocus();
+        mLastFocusedAction = findActionForView(child);
+        return true;
     }
 
     public void onCustomActionClicked(Action action, View view) {
@@ -374,12 +564,8 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
     @Override
     public boolean onKey(View v, int keyCode, KeyEvent event) {
         if (event.getAction() != KeyEvent.ACTION_UP) {
-            // Let the playback glue handle the key before applying the focus fallback below.
+            // Let the playback glue handle the key
             if (super.onKey(v, keyCode, event)) return true;
-
-            // Leanback UI doesn't work within compose. We need to implement a custom focus handler
-            // to work around various leanback issues on older Android platforms
-            if (event.getAction() == KeyEvent.ACTION_DOWN) return moveFocus(v, keyCode);
             return false;
         }
 
@@ -392,33 +578,5 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
             selectAudioAction.handleClickAction(playbackController, getPlayerAdapter(), getContext(), v);
         }
         return super.onKey(v, keyCode, event);
-    }
-
-    private boolean moveFocus(View root, int keyCode) {
-        final int direction;
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                direction = View.FOCUS_UP;
-                break;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                direction = View.FOCUS_DOWN;
-                break;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-                direction = View.FOCUS_LEFT;
-                break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                direction = View.FOCUS_RIGHT;
-                break;
-            default:
-                return false;
-        }
-
-        View focused = root.findFocus();
-        if (focused == null) return false;
-
-        View next = focused.focusSearch(direction);
-        if (next != null && next != focused) next.requestFocus(direction);
-
-        return true;
     }
 }

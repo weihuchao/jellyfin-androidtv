@@ -32,6 +32,10 @@
         <item name="progressPrimary">@color/jellyfin_blue</item>
         <item name="progressSecondary">@color/jellyfin_purple</item>
 
+        <!-- Playback controls are hidden shortly after the last interaction -->
+        <item name="playbackControlsAutoHideTimeout">@integer/playback_controls_auto_hide_timeout</item>
+        <item name="playbackControlsAutoHideTickleTimeout">@integer/playback_controls_auto_hide_timeout</item>
+
         <!-- Custom Styles for Elements -->
         <item name="android:datePickerStyle">@style/DatePickerCustom</item>
         <item name="rowHeaderStyle">@style/Widget.Jellyfin.Row.Header</item>
