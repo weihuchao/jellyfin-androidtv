@@ -27,9 +27,12 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jellyfin.androidtv.R
+import org.jellyfin.androidtv.auth.model.ConnectedState
+import org.jellyfin.androidtv.auth.model.UnableToConnectState
 import org.jellyfin.androidtv.auth.repository.SessionRepository
 import org.jellyfin.androidtv.auth.repository.SessionRepositoryState
 import org.jellyfin.androidtv.auth.repository.UserRepository
+import org.jellyfin.androidtv.constant.ServerAddress
 import org.jellyfin.androidtv.data.eventhandling.SocketHandler
 import org.jellyfin.androidtv.databinding.ActivityStartupBinding
 import org.jellyfin.androidtv.integration.LeanbackChannelWorker
@@ -45,6 +48,7 @@ import org.jellyfin.androidtv.ui.startup.fragment.SplashFragment
 import org.jellyfin.androidtv.ui.startup.fragment.StartupToolbarFragment
 import org.jellyfin.androidtv.util.applyTheme
 import org.jellyfin.androidtv.util.createBundle
+import org.jellyfin.androidtv.util.getSummary
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.model.serializer.toUUIDOrNull
@@ -131,9 +135,39 @@ class StartupActivity : FragmentActivity() {
 
 				val server = startupViewModel.getLastServer()
 				if (server != null) showServer(server.id)
-				else showServerSelection()
+				else connectToDefaultServer()
 			}
 		}.launchIn(lifecycleScope)
+
+	/**
+	 * Connect to the server address built into this build. The server selection screen is shown
+	 * when the connection fails.
+	 */
+	private fun connectToDefaultServer() = lifecycleScope.launch {
+		startupViewModel.addServer(ServerAddress.DEFAULT)
+			.collect { state ->
+				when (state) {
+					is ConnectedState -> showServer(state.id)
+
+					is UnableToConnectState -> {
+						Toast.makeText(
+							this@StartupActivity,
+							getString(
+								R.string.server_connection_failed_candidates,
+								state.addressCandidates
+									.map { "${it.key} - ${it.value.getSummary(this@StartupActivity)}" }
+									.joinToString(prefix = "\n", separator = "\n")
+							),
+							Toast.LENGTH_LONG,
+						).show()
+
+						showServerSelection()
+					}
+
+					else -> Unit
+				}
+			}
+	}
 
 	private suspend fun openNextActivity() {
 		val itemId = when {

@@ -16,6 +16,7 @@ import org.jellyfin.androidtv.R
 import org.jellyfin.androidtv.auth.model.ConnectedState
 import org.jellyfin.androidtv.auth.model.ConnectingState
 import org.jellyfin.androidtv.auth.model.UnableToConnectState
+import org.jellyfin.androidtv.constant.ServerAddress
 import org.jellyfin.androidtv.databinding.FragmentServerAddBinding
 import org.jellyfin.androidtv.ui.startup.ServerAddViewModel
 import org.jellyfin.androidtv.util.createBundle
@@ -64,6 +65,8 @@ class ServerAddFragment : Fragment() {
 			binding.address.isEnabled = false
 			submitAddress()
 		} else {
+			// Default to the server address built into this build
+			binding.address.setText(ServerAddress.DEFAULT)
 			binding.address.requestFocus()
 		}
 
