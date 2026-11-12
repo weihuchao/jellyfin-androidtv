@@ -605,18 +605,31 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
                     }
 
                     if (!isControlsOverlayVisible()) {
-                        // The controls are hidden: left and right must not open the Leanback
-                        // seek ui, which pauses the playback while seeking.
+                        // The controls are hidden: left and right skip forward or backward. The
+                        // Leanback seek ui is not used because it pauses the playback while
+                        // seeking.
                         if (!playbackControllerContainer.getValue().getPlaybackController().isLiveTv()) {
                             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                                // Skip without showing the controls, otherwise the next left or
+                                // right press would move the selection instead of skipping
+                                leanbackOverlayFragment.setShouldShowOverlay(false);
+                                playbackControllerContainer.getValue().getPlaybackController().fastForward();
                                 setFadingEnabled(true);
                                 return true;
                             }
 
                             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                                leanbackOverlayFragment.setShouldShowOverlay(false);
+                                playbackControllerContainer.getValue().getPlaybackController().rewind();
                                 setFadingEnabled(true);
                                 return true;
                             }
+                        }
+
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                            // The controls are shown by the framework, the selection is moved in
+                            // the pressed direction as soon as they are visible
+                            leanbackOverlayFragment.getPlayerGlue().setPendingNavigationKey(keyCode);
                         }
 
                         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {

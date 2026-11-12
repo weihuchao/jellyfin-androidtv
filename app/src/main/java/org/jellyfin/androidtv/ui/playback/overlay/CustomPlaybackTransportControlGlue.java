@@ -89,6 +89,10 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
     // The action that was focused last, used to restore the position in the controls
     private Action mLastFocusedAction = null;
 
+    // The direction key that was pressed while the controls were hidden, it is applied as soon
+    // as the controls become visible
+    private int mPendingNavigationKey = 0;
+
     private final Handler mHandler = new Handler();
     private Runnable mRefreshEndTime;
     private Runnable mRefreshViewVisibility;
@@ -295,10 +299,6 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
             secondaryActionsAdapter.add(skipPreviousAction);
         }
 
-        if (playerAdapter.hasNextItem()) {
-            secondaryActionsAdapter.add(skipNextAction);
-        }
-
         if (playerAdapter.hasChapters()) {
             secondaryActionsAdapter.add(chapterAction);
         }
@@ -334,6 +334,21 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
         if (findActionView(action) == null) action = playPauseAction;
 
         focusAction(action);
+
+        // Move the selection in the direction that was pressed while the controls were hidden
+        if (mPendingNavigationKey != 0) {
+            int keyCode = mPendingNavigationKey;
+            mPendingNavigationKey = 0;
+            handleNavigationKey(keyCode);
+        }
+    }
+
+    /**
+     * Remember a direction key that was pressed while the controls were hidden. The selection is
+     * moved in that direction as soon as the controls become visible.
+     */
+    public void setPendingNavigationKey(int keyCode) {
+        mPendingNavigationKey = keyCode;
     }
 
     /**
@@ -367,12 +382,22 @@ public class CustomPlaybackTransportControlGlue extends PlaybackTransportControl
 
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (isInRow(focused, mSecondaryButtonRef)) return focusProgressBar();
-                if (focused == mProgressBar) return focusControlRow(mButtonRef);
+                if (focused == mProgressBar) {
+                    focusControlRow(mButtonRef);
+                    return true;
+                }
+                // The top row is the first one, the selection stays where it is
+                if (isInRow(focused, mButtonRef)) return true;
                 return false;
 
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (isInRow(focused, mButtonRef)) return focusProgressBar();
-                if (focused == mProgressBar) return focusControlRow(mSecondaryButtonRef);
+                if (focused == mProgressBar) {
+                    focusControlRow(mSecondaryButtonRef);
+                    return true;
+                }
+                // The bottom row is the last one, the selection stays where it is
+                if (isInRow(focused, mSecondaryButtonRef)) return true;
                 return false;
         }
 
