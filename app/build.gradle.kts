@@ -95,7 +95,21 @@ android {
 
 	testOptions.unitTests.all {
 		it.useJUnitPlatform()
+		it.jvmArgs(
+			"--add-opens=java.base/java.lang=ALL-UNNAMED",
+			"--add-opens=java.base/java.util=ALL-UNNAMED",
+			"--add-opens=java.base/java.io=ALL-UNNAMED",
+			"--add-opens=java.base/java.net=ALL-UNNAMED",
+			"--add-opens=java.base/java.nio=ALL-UNNAMED",
+			"--add-opens=java.base/java.text=ALL-UNNAMED",
+			"--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+			"--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+			"--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+			"--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED",
+			"--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED",
+		)
 	}
+	testOptions.unitTests.isIncludeAndroidResources = true
 }
 
 base.archivesName.set("jellyfin-androidtv-v${project.getVersionName()}")
@@ -188,4 +202,7 @@ dependencies {
 	testImplementation(libs.kotest.runner.junit5)
 	testImplementation(libs.kotest.assertions)
 	testImplementation(libs.mockk)
+	testImplementation(libs.robolectric)
+	testImplementation(libs.junit4)
+	testRuntimeOnly(libs.junit.vintage.engine)
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.AbstractComposeView
@@ -21,6 +22,7 @@ import org.jellyfin.androidtv.preference.UserPreferences
 import org.jellyfin.androidtv.ui.base.Text
 import org.jellyfin.androidtv.ui.composable.getResolutionName
 import org.jellyfin.androidtv.util.TimeUtils
+import org.jellyfin.androidtv.util.getTimeFormatter
 import org.jellyfin.androidtv.util.sdk.getProgramSubText
 import org.jellyfin.androidtv.util.sdk.getSeasonEpisodeName
 import org.jellyfin.androidtv.util.sdk.isNew
@@ -44,6 +46,8 @@ import kotlin.time.Duration
 fun InfoRowDate(
 	item: BaseItemDto,
 ) {
+	val context = LocalContext.current
+	val timeFormatter = remember(context) { context.getTimeFormatter() }
 	val date = when (item.type) {
 		BaseItemKind.PERSON -> {
 			val birthDate = item.premiereDate
@@ -58,9 +62,9 @@ fun InfoRowDate(
 		BaseItemKind.PROGRAM, BaseItemKind.TV_CHANNEL -> when {
 			item.startDate != null && item.endDate != null -> buildString {
 				// Format: 20:00 - 21:30
-				append(item.startDate?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)))
+				append(item.startDate?.format(timeFormatter))
 				append(" - ")
-				append(item.endDate?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)))
+				append(item.endDate?.format(timeFormatter))
 			}
 
 			else -> null

@@ -1,6 +1,6 @@
 # Jellyfin Android TV 定制需求
 
-面向投影仪使用场景的定制需求，按版本记录。v0.1、v0.2、v0.3 已实现（对应分支 `custom/seamless`）。
+面向投影仪使用场景的定制需求，按版本记录。v0.1、v0.2、v0.3、v0.4 已实现（对应分支 `custom/seamless`）。
 
 ## v0.1 倍速菜单
 

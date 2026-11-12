@@ -1,7 +1,9 @@
 package org.jellyfin.androidtv.util
 
 import android.content.Context
+import org.jellyfin.androidtv.R
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
 import java.util.Locale
 
@@ -15,13 +17,17 @@ val Context.locale: Locale
 @JvmOverloads
 fun Context.getDateFormatter(
 	style: FormatStyle = FormatStyle.SHORT
-): DateTimeFormatter = DateTimeFormatter
-	.ofLocalizedDateTime(style)
-	.withLocale(locale)
+): DateTimeFormatter = DateTimeFormatterBuilder()
+	.append(DateTimeFormatter.ofLocalizedDate(style))
+	.appendLiteral(' ')
+	.appendPattern(getTimePattern())
+	.toFormatter(locale)
 
-@JvmOverloads
-fun Context.getTimeFormatter(
-	style: FormatStyle = FormatStyle.SHORT
-): DateTimeFormatter = DateTimeFormatter
-	.ofLocalizedTime(style)
+/**
+ * The time format used everywhere in the app, always 24-hour with zero padding.
+ */
+fun Context.getTimePattern(): String = getString(R.string.time_format_24h)
+
+fun Context.getTimeFormatter(): DateTimeFormatter = DateTimeFormatter
+	.ofPattern(getTimePattern())
 	.withLocale(locale)

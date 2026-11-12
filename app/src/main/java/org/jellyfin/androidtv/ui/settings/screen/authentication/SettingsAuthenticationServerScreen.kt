@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,7 @@ import org.jellyfin.androidtv.ui.navigation.LocalRouter
 import org.jellyfin.androidtv.ui.navigation.focus.focusKey
 import org.jellyfin.androidtv.ui.settings.Routes
 import org.jellyfin.androidtv.ui.settings.composable.SettingsColumn
+import org.jellyfin.androidtv.util.getTimeFormatter
 import org.koin.compose.koinInject
 import java.time.Instant
 import java.time.LocalDateTime
@@ -78,6 +80,8 @@ fun SettingsAuthenticationServerScreen(serverId: UUID) {
 					},
 					headingContent = { Text(user.name) },
 					captionContent = {
+						val context = LocalContext.current
+						val timeFormatter = remember(context) { context.getTimeFormatter() }
 						val lastUsedDate = LocalDateTime.ofInstant(
 							Instant.ofEpochMilli(user.lastUsed),
 							ZoneId.systemDefault()
@@ -86,7 +90,7 @@ fun SettingsAuthenticationServerScreen(serverId: UUID) {
 							stringResource(
 								R.string.lbl_user_last_used,
 								lastUsedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
-								lastUsedDate.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)),
+								lastUsedDate.format(timeFormatter),
 							)
 						)
 					},

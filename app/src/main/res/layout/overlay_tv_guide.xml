@@ -108,8 +108,8 @@
         android:layout_marginEnd="20sp"
         android:layout_alignParentEnd="true"
         android:layout_marginTop="25dp"
-        android:format12Hour="h:mm"
-        android:format24Hour="k:mm"
+        android:format12Hour="@string/time_format_24h"
+        android:format24Hour="@string/time_format_24h"
         android:gravity="end"
         android:textSize="26sp" />
 
