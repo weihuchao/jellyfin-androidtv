@@ -1272,6 +1272,18 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         }
     }
 
+    /**
+     * Shows a hint for a pending fast forward or rewind request.
+     *
+     * @param offsetMs The accumulated offset of the current gesture
+     * @param forward True when fast forwarding, false when rewinding
+     */
+    public void showSkipIndicator(long offsetMs, boolean forward) {
+        if (binding == null) return;
+
+        binding.skipIndicator.show(offsetMs, forward);
+    }
+
     public void setPlayPauseActionState(final int state) {
         leanbackOverlayFragment.updatePlayState();
     }

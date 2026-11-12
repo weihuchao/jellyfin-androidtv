@@ -59,6 +59,10 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     private final static long PROGRESS_REPORTING_INTERVAL = TimeUtils.secondsToMillis(3);
     // Frequency to report paused state
     private static final long PROGRESS_REPORTING_PAUSE_INTERVAL = TimeUtils.secondsToMillis(15);
+    // Time the fast forward and rewind requests are combined into a single jump
+    private static final long SKIP_COALESCE_DELAY = 800;
+    // Delay before a pending jump is retried while the player is not ready yet
+    private static final long SKIP_RETRY_DELAY = 200;
 
     private Lazy<PlaybackManager> playbackManager = inject(PlaybackManager.class);
     private Lazy<UserPreferences> userPreferences = inject(UserPreferences.class);
@@ -113,6 +117,8 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     private long mSeekPosition = -1;
     private boolean wasSeeking = false;
     private boolean finishedInitialSeek = false;
+    // Set while the current position must not be overwritten by refreshCurrentPosition()
+    private boolean keepCurrentPosition = false;
 
     private LocalDateTime mCurrentProgramEnd = null;
     private LocalDateTime mCurrentProgramStart = null;
@@ -378,7 +384,7 @@ public class PlaybackController implements PlaybackControllerNotifiable {
             newPos = getRealTimeProgress();
             // live tv
         } else if (hasInitializedVideoManager()) {
-            if (currentSkipPos != 0 || (!isPlaying() && mSeekPosition != -1)) {
+            if (pendingSkip.hasPending() || keepCurrentPosition || (!isPlaying() && mSeekPosition != -1)) {
                 newPos = mSeekPosition;
                 // use seekPosition until playback starts
             } else if (isPlaying()) {
@@ -394,7 +400,13 @@ public class PlaybackController implements PlaybackControllerNotifiable {
                     // the initial seek for direct play and hls hasn't happened yet
                     newPos = mSeekPosition;
                 }
+            }
+            if (isPlaying() && wasSeeking) {
+                // Playback has resumed, so the previous jump has landed. This has to be
+                // checked outside of the branch above, otherwise wasSeeking is never cleared
+                // while a jump is pending and every following jump is rejected by seek().
                 wasSeeking = false;
+                finishedInitialSeek = true;
             }
         }
         // use original value if new one isn't available
@@ -877,6 +889,9 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         refreshCurrentPosition();
         Timber.i("stop called at %s", mCurrentPosition);
         stopReportLoop();
+        mHandler.removeCallbacks(skipRunnable);
+        pendingSkip.clear();
+        keepCurrentPosition = false;
         if (mPlaybackState != PlaybackState.IDLE && mPlaybackState != PlaybackState.UNDEFINED) {
             mPlaybackState = PlaybackState.IDLE;
 
@@ -991,7 +1006,7 @@ public class PlaybackController implements PlaybackControllerNotifiable {
             // Since we've skipped ahead, set the current position so the PlaybackStopInfo will report the correct end time
             mCurrentPosition = getDuration();
             // Make sure we also set the seek positions so mCurrentPosition won't get overwritten in refreshCurrentPosition()
-            currentSkipPos = mCurrentPosition;
+            keepCurrentPosition = true;
             mSeekPosition = mCurrentPosition;
             // Finalize item playback
             itemComplete();
@@ -1057,26 +1072,51 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         }
     }
 
-    private long currentSkipPos = 0;
-    private final Runnable skipRunnable = () -> {
-        if (!(isPlaying() || isPaused())) return; // in case we completed since this was requested
+    private final PendingSkip pendingSkip = new PendingSkip();
+    private final Runnable skipRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!pendingSkip.hasPending()) return;
 
-        seek(currentSkipPos);
-        currentSkipPos = 0;
+            if (!hasInitializedVideoManager()) {
+                pendingSkip.clear();
+                return;
+            }
+
+            if (mPlaybackState == PlaybackState.IDLE || mPlaybackState == PlaybackState.ERROR) {
+                pendingSkip.clear();
+                return;
+            }
+
+            // The player is still buffering or the previous jump has not landed yet. Keep the
+            // request and try again later instead of dropping it, otherwise every key pressed
+            // while the player is buffering is lost.
+            if ((!isPlaying() && !isPaused()) || wasSeeking) {
+                mHandler.postDelayed(this, SKIP_RETRY_DELAY);
+                return;
+            }
+
+            seek(pendingSkip.getTargetPositionMs());
+            pendingSkip.clear();
+        }
     };
 
     private void skip(int msec) {
-        if (hasInitializedVideoManager() && (isPlaying() || isPaused()) && spinnerOff && mVideoManager.getCurrentPosition() > 0) { //guard against skipping before playback has truly begun
-            mHandler.removeCallbacks(skipRunnable);
-            refreshCurrentPosition();
-            currentSkipPos = Utils.getSafeSeekPosition((currentSkipPos == 0 ? mCurrentPosition : currentSkipPos) + msec, getDuration());
+        // The request is recorded even while the player is buffering, otherwise the keys
+        // pressed during that time would be lost completely.
+        if (!hasInitializedVideoManager() || !spinnerOff || mVideoManager.getCurrentPosition() <= 0) return; //guard against skipping before playback has truly begun
 
-            Timber.i("Skip amount requested was %s. Calculated position is %s", msec, currentSkipPos);
-            Timber.i("Duration reported as: %s current pos: %s", getDuration(), mCurrentPosition);
+        mHandler.removeCallbacks(skipRunnable);
+        refreshCurrentPosition();
+        pendingSkip.request(mCurrentPosition, msec, getDuration());
 
-            mSeekPosition = currentSkipPos;
-            mHandler.postDelayed(skipRunnable, 800);
-        }
+        Timber.i("Skip amount requested was %s. Calculated position is %s", msec, pendingSkip.getTargetPositionMs());
+        Timber.i("Duration reported as: %s current pos: %s", getDuration(), mCurrentPosition);
+
+        mSeekPosition = pendingSkip.getTargetPositionMs();
+        mHandler.postDelayed(skipRunnable, SKIP_COALESCE_DELAY);
+
+        if (mFragment != null) mFragment.showSkipIndicator(pendingSkip.getOffsetMs(), msec > 0);
     }
 
     public void updateTvProgramInfo() {
