@@ -1,9 +1,11 @@
 import org.gradle.api.Project
+import java.util.Properties
 
 /**
  * Get the version name from the current environment or use the fallback.
- * It will look for a environment variable called JELLYFIN_VERSION first.
- * Next it will look for a property called "jellyfin.version" and lastly it will use the fallback.
+ * It will look for a property called "jellyfin.version" first, then for an environment variable
+ * called JELLYFIN_VERSION, then for the "version.properties" file in the project root and lastly
+ * it will use the fallback.
  * If the version in the environment starts with a "v" prefix it will be removed.
  *
  * Sample output:
@@ -13,7 +15,27 @@ import org.gradle.api.Project
 fun Project.getVersionName(fallback: String = "0.0.0-dev.1") =
 	getProperty("jellyfin.version")
 		?.removePrefix("v")
+		?: getVersionNameFromFile()
 		?: fallback
+
+/**
+ * The version declared in the "version.properties" file of the project root, if there is one.
+ */
+private fun Project.getVersionNameFromFile(): String? {
+	val file = rootDir.resolve(VERSION_FILE_NAME)
+	if (!file.isFile) return null
+
+	val properties = Properties()
+	file.inputStream().use(properties::load)
+
+	return properties.getProperty(VERSION_PROPERTY_NAME)
+		?.trim()
+		?.removePrefix("v")
+		?.takeIf { it.isNotEmpty() }
+}
+
+private const val VERSION_FILE_NAME = "version.properties"
+private const val VERSION_PROPERTY_NAME = "jellyfin.version"
 
 /**
  * Get the version code for a given semantic version.

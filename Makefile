@@ -8,7 +8,7 @@
 #   make version              打印当前使用的版本号
 #
 # 可覆盖变量：
-#   VERSION   版本号，默认取环境变量 JELLYFIN_VERSION，否则 0.20.0-seamless-v0.7
+#   VERSION   版本号，默认取环境变量 JELLYFIN_VERSION，否则取 version.properties 里的版本号
 #   DEST      APK 导出目录，默认 release
 #   DEVICE    投影仪的 adb 地址，默认 192.168.55.80:5555
 
@@ -17,7 +17,9 @@ SHELL := /bin/bash
 
 DEVICE  ?= 192.168.55.80:5555
 DEST    ?= release
-VERSION ?= $(if $(JELLYFIN_VERSION),$(JELLYFIN_VERSION),0.20.0-seamless-v0.7)
+VERSION_FILE    := version.properties
+VERSION_IN_FILE := $(shell sed -n 's/^jellyfin\.version[[:space:]]*=[[:space:]]*//p' $(VERSION_FILE) 2>/dev/null | head -1 | tr -d ' \r')
+VERSION ?= $(if $(JELLYFIN_VERSION),$(JELLYFIN_VERSION),$(VERSION_IN_FILE))
 
 GRADLE       := ./gradlew
 APK_DIR      := app/build/outputs/apk/release
@@ -54,7 +56,7 @@ version:
 	@echo $(VERSION)
 
 build:
-	$(GRADLE) :app:assembleRelease "-Pjellyfin.version=$(VERSION)" "-Porg.gradle.java.installations.paths=$(JAVA_INSTALLATIONS)"
+	$(GRADLE) :app:assembleRelease $(if $(VERSION),"-Pjellyfin.version=$(VERSION)") "-Porg.gradle.java.installations.paths=$(JAVA_INSTALLATIONS)"
 
 export: build
 	@mkdir -p "$(DEST)"
