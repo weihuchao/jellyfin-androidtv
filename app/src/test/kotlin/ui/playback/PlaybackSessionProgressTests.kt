@@ -37,6 +37,37 @@ class PlaybackSessionProgressTests : FunSpec({
 		session.watched shouldBe 10_000L
 	}
 
+	test("PlaybackSessionProgress ignores a first position behind the start position") {
+		val session = PlaybackSessionProgress()
+
+		// The session starts at a resume point the server already knows
+		session.begin(UUID.randomUUID(), 124_617)
+
+		// The player reports the position it is still preparing, which is behind the start position
+		session.observe(0) shouldBe false
+		session.watched shouldBe 0L
+
+		// The player reached the resume point, that position is not watched media either
+		session.observe(124_617) shouldBe false
+		session.watched shouldBe 0L
+
+		// Only the media that was played during this session counts
+		session.observe(125_739) shouldBe false
+		session.watched shouldBe 1_122L
+	}
+
+	test("PlaybackSessionProgress counts the first position when the session starts at zero") {
+		val session = PlaybackSessionProgress()
+
+		session.begin(UUID.randomUUID(), 0)
+
+		session.observe(3_000) shouldBe false
+		session.watched shouldBe 3_000L
+
+		session.observe(6_000) shouldBe true
+		session.watched shouldBe 6_000L
+	}
+
 	test("PlaybackSessionProgress is reportable after the session watched enough") {
 		val session = PlaybackSessionProgress()
 

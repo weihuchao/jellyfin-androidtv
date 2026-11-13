@@ -23,6 +23,7 @@ class PlaybackSessionProgress {
 	private var lastPositionMs = 0L
 	private var watchedMs = 0L
 	private var reportable = false
+	private var baselineSet = false
 
 	/**
 	 * The item that is played in this session.
@@ -60,6 +61,7 @@ class PlaybackSessionProgress {
 		this.lastPositionMs = startPositionMs
 		this.watchedMs = 0
 		this.reportable = false
+		this.baselineSet = false
 	}
 
 	/**
@@ -72,8 +74,21 @@ class PlaybackSessionProgress {
 	 * @return Whether the session watched enough to be reported to the server
 	 */
 	fun observe(positionMs: Long): Boolean {
-		if (positionMs > lastPositionMs) watchedMs += positionMs - lastPositionMs
-		lastPositionMs = positionMs
+		if (baselineSet) {
+			if (positionMs > lastPositionMs) watchedMs += positionMs - lastPositionMs
+			lastPositionMs = positionMs
+		} else {
+			// The first observation is the position the player is at. It can be behind the position the
+			// session started at, for example while the player is still preparing the stream, and that
+			// position belongs to the server already, so it is the baseline of this session.
+			baselineSet = true
+			if (positionMs > startPositionMs) {
+				watchedMs += positionMs - startPositionMs
+				lastPositionMs = positionMs
+			} else {
+				lastPositionMs = startPositionMs
+			}
+		}
 		if (!reportable && watchedMs >= MIN_WATCHED_MS) reportable = true
 		return reportable
 	}

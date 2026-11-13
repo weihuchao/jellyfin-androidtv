@@ -2,7 +2,9 @@ package org.jellyfin.androidtv.ui.playback
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -37,5 +39,13 @@ class ResumeProgressDecisionTests : FunSpec({
 
 	test("ResumeProgressDecision does not restore without a last playback") {
 		ResumeProgressDecision.needsRestore(null, setOf(otherItemId), now) shouldBe false
+	}
+
+	test("ResumeProgressSync sends the local time of the device because the server turns it into UTC") {
+		// 2026-11-13 11:17:33 in Asia/Shanghai is 2026-11-13 03:17:33 in UTC
+		val timestamp = Instant.parse("2026-11-13T03:17:33Z")
+
+		ResumeProgressSync.lastPlayedDate(timestamp, ZoneId.of("Asia/Shanghai")) shouldBe
+			LocalDateTime.of(2026, 11, 13, 11, 17, 33)
 	}
 })

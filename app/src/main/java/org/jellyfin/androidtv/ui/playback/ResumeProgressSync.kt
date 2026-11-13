@@ -9,7 +9,9 @@ import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.UpdateUserItemDataDto
 import timber.log.Timber
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -93,8 +95,10 @@ class ResumeProgressSync(
 					UpdateUserItemDataDto(
 						playbackPositionTicks = lastPlayback.positionMs * TICKS_PER_MILLISECOND,
 						// The server orders the continue watching list by the time an item was played last,
-						// so the restored item has to carry that time as well
-						lastPlayedDate = lastPlayback.timestamp.atOffset(ZoneOffset.UTC).toLocalDateTime(),
+						// so the restored item has to carry that time as well. The server treats that time as
+						// the local time of the server and turns it into UTC, so the local time of the device
+						// is sent instead of the time in UTC.
+						lastPlayedDate = lastPlayedDate(lastPlayback.timestamp),
 					),
 				)
 
@@ -113,5 +117,18 @@ class ResumeProgressSync(
 
 	companion object {
 		private const val TICKS_PER_MILLISECOND = 10_000L
+
+		/**
+		 * The time the server has to be told about for the item that was played last.
+		 *
+		 * The server treats the time it is given as the local time of the server and turns it into UTC,
+		 * the same way it does with the times it writes itself, so the local time of the device is sent
+		 * instead of the time in UTC.
+		 *
+		 * @param timestamp The time the item was reported to the server
+		 * @param zone The time zone of the device
+		 */
+		fun lastPlayedDate(timestamp: Instant, zone: ZoneId = ZoneId.systemDefault()): LocalDateTime =
+			timestamp.atZone(zone).toLocalDateTime()
 	}
 }
