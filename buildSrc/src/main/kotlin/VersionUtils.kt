@@ -26,7 +26,7 @@ private fun Project.getVersionNameFromFile(): String? {
 	if (!file.isFile) return null
 
 	val properties = Properties()
-	file.inputStream().use(properties::load)
+	file.reader(Charsets.UTF_8).use(properties::load)
 
 	return properties.getProperty(VERSION_PROPERTY_NAME)
 		?.trim()
