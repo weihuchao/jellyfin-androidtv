@@ -15,6 +15,7 @@ import org.jellyfin.androidtv.data.querying.GetTrailersRequest
 import org.jellyfin.androidtv.data.repository.UserViewsRepository
 import org.jellyfin.androidtv.ui.GridButton
 import org.jellyfin.androidtv.ui.browsing.BrowseGridFragment.SortOption
+import org.jellyfin.androidtv.ui.playback.ResumeProgressSync
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.exception.InvalidStatusException
 import org.jellyfin.sdk.api.client.extensions.artistsApi
@@ -71,15 +72,27 @@ fun <T : Any> ItemRowAdapter.setItems(
 	itemsLoaded = allItems.size
 }
 
-fun ItemRowAdapter.retrieveResumeItems(api: ApiClient, query: GetResumeItemsRequest) {
+fun ItemRowAdapter.retrieveResumeItems(api: ApiClient, query: GetResumeItemsRequest, resumeProgressSync: ResumeProgressSync) {
 	ProcessLifecycleOwner.get().lifecycleScope.launch {
 		runCatching {
-			val response = withContext(Dispatchers.IO) {
+			var items = withContext(Dispatchers.IO) {
 				api.itemsApi.getResumeItems(query).content
+			}.items
+
+			// The server can lose the resume point of the item that was watched last, for example when
+			// the device is powered off while the item is playing. It is restored here, so the list
+			// shows what was watched last instead of an item that was left behind earlier.
+			val restored = withContext(Dispatchers.IO) {
+				resumeProgressSync.needsRestore(items) && resumeProgressSync.restore()
+			}
+			if (restored) {
+				items = withContext(Dispatchers.IO) {
+					api.itemsApi.getResumeItems(query).content
+				}.items
 			}
 
 			setItems(
-				items = response.items,
+				items = items,
 				transform = { item, _ ->
 					BaseItemDtoBaseRowItem(
 						item,
@@ -89,7 +102,7 @@ fun ItemRowAdapter.retrieveResumeItems(api: ApiClient, query: GetResumeItemsRequ
 				}
 			)
 
-			if (response.items.isEmpty()) removeRow()
+			if (items.isEmpty()) removeRow()
 		}.fold(
 			onSuccess = { notifyRetrieveFinished() },
 			onFailure = { error -> notifyRetrieveFinished(error as? Exception) }

@@ -28,6 +28,7 @@ import org.jellyfin.androidtv.data.repository.UserViewsRepository;
 import org.jellyfin.androidtv.ui.GridButton;
 import org.jellyfin.androidtv.ui.browsing.BrowseGridFragment;
 import org.jellyfin.androidtv.ui.browsing.EnhancedBrowseFragment;
+import org.jellyfin.androidtv.ui.playback.ResumeProgressSync;
 import org.jellyfin.androidtv.ui.presentation.MutableObjectAdapter;
 import org.jellyfin.androidtv.ui.presentation.TextItemPresenter;
 import org.jellyfin.androidtv.util.Utils;
@@ -648,7 +649,7 @@ public class ItemRowAdapter extends MutableObjectAdapter<Object> {
                 ItemRowAdapterHelperKt.retrieveLiveTvSeriesTimers(this, api.getValue(), context, canManageRecordings);
                 break;
             case Resume:
-                ItemRowAdapterHelperKt.retrieveResumeItems(this, api.getValue(), resumeQuery);
+                ItemRowAdapterHelperKt.retrieveResumeItems(this, api.getValue(), resumeQuery, KoinJavaComponent.get(ResumeProgressSync.class));
                 break;
         }
     }

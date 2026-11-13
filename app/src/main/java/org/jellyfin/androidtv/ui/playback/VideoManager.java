@@ -9,6 +9,7 @@ import android.media.audiofx.DynamicsProcessing.Limiter;
 import android.media.audiofx.Equalizer;
 import android.net.Uri;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -87,6 +88,10 @@ public class VideoManager {
     private long mMetaDuration = -1;
     private long lastExoPlayerPosition = -1;
     private boolean nightModeEnabled;
+    private int mBufferingCount = 0;
+    private long mBufferingStartedAt = 0;
+    private long mTotalBufferingMs = 0;
+    private int mDroppedFrames = 0;
 
     public boolean isContracted = false;
 
@@ -116,6 +121,16 @@ public class VideoManager {
                 }
             });
         }
+
+        // Diagnostics for playback stutter, the logs show whether the player waits for data or
+        // cannot keep up with the video
+        mExoPlayer.addAnalyticsListener(new AnalyticsListener() {
+            @Override
+            public void onDroppedVideoFrames(AnalyticsListener.EventTime eventTime, int droppedFrames, long elapsedMs) {
+                mDroppedFrames += droppedFrames;
+                Timber.i("Dropped %d video frames in %d ms (%d in total)", droppedFrames, elapsedMs, mDroppedFrames);
+            }
+        });
 
         mExoPlayerView = view.findViewById(R.id.exoPlayerView);
         mExoPlayerView.setPlayer(mExoPlayer);
@@ -161,7 +176,14 @@ public class VideoManager {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
                 if (playbackState == Player.STATE_BUFFERING) {
-                    Timber.d("Player is buffering");
+                    mBufferingCount++;
+                    mBufferingStartedAt = SystemClock.uptimeMillis();
+                    Timber.i("Player is buffering (%d)", mBufferingCount);
+                } else if (playbackState == Player.STATE_READY && mBufferingStartedAt > 0) {
+                    long duration = SystemClock.uptimeMillis() - mBufferingStartedAt;
+                    mTotalBufferingMs += duration;
+                    mBufferingStartedAt = 0;
+                    Timber.i("Player left buffering after %d ms (%d ms in %d events)", duration, mTotalBufferingMs, mBufferingCount);
                 }
 
                 if (playbackState == Player.STATE_ENDED) {

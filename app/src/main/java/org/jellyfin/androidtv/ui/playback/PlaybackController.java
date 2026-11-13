@@ -113,6 +113,10 @@ public class PlaybackController implements PlaybackControllerNotifiable {
 
     private long mStartPosition = 0;
 
+    // Tracks how much of the current item was actually watched, so a session that is only opened
+    // and closed again does not leave a resume point on the server
+    private final PlaybackSessionProgress sessionProgress = new PlaybackSessionProgress();
+
     // tmp position used when seeking
     private long mSeekPosition = -1;
     private boolean wasSeeking = false;
@@ -413,6 +417,59 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         mCurrentPosition = newPos != -1 ? newPos : mCurrentPosition;
     }
 
+    /**
+     * The position that is reported to the server.
+     * <p>
+     * The position of the player is used as soon as it is running, so a fast forward that has not
+     * landed yet is not reported as if it had. While the player is still starting up the seek target
+     * is used, because the player still reports the old position and reporting that would clear the
+     * resume point on the server.
+     */
+    private long getReportPositionMs() {
+        if (hasInitializedVideoManager() && isPlaying()) {
+            long position = mVideoManager.getCurrentPosition();
+            if (position > 0) return position;
+        }
+        return mCurrentPosition;
+    }
+
+    /**
+     * Reports the playback position to the server.
+     * <p>
+     * The position is only reported once the session watched enough, otherwise opening an item and
+     * leaving again right away would create a resume point on the server and move that item to the
+     * top of the continue watching list.
+     */
+    private void reportProgress(long positionMs) {
+        if (!sessionProgress.observe(positionMs)) return;
+
+        reportingHelper.getValue().reportProgress(mFragment, this, getCurrentlyPlayingItem(), getCurrentStreamInfo(), positionMs * 10000, false);
+    }
+
+    /**
+     * Reports the end of the playback to the server.
+     * <p>
+     * A session that did not watch anything must not leave a resume point behind. When the playback
+     * started at a position the server already knows, that position is left untouched.
+     */
+    private void reportStopped(long positionMs) {
+        BaseItemDto item = getCurrentlyPlayingItem();
+        if (item == null || mCurrentStreamInfo == null) return;
+
+        Long position;
+        if (sessionProgress.isReportable()) {
+            position = positionMs * 10000;
+        } else if (sessionProgress.getStartPosition() <= 0) {
+            // Nothing was watched and the server has no resume point for this item either
+            position = 0L;
+        } else {
+            // The playback started at a resume point the server already has, leave it as it is
+            return;
+        }
+
+        reportingHelper.getValue().reportStopped(mFragment, item, mCurrentStreamInfo, position);
+    }
+
     public void play(long position) {
         play(position, null);
     }
@@ -636,6 +693,10 @@ public class PlaybackController implements PlaybackControllerNotifiable {
             Timber.w("Error - attempting to play without:%s%s", hasInitializedVideoManager() ? "" : " [videoManager]", hasFragment() ? "" : " [overlay fragment]");
             return;
         }
+
+        // The session starts here, the position it starts at is the position the server already
+        // knows and is therefore not part of the media this session watched
+        sessionProgress.begin(item.getId(), position);
 
         mCurrentOptions.setAudioStreamIndex(null); // reset audio stream index to allow auto selection on new item
 
@@ -887,6 +948,7 @@ public class PlaybackController implements PlaybackControllerNotifiable {
 
     public void stop() {
         refreshCurrentPosition();
+        long reportPosition = getReportPositionMs();
         Timber.i("stop called at %s", mCurrentPosition);
         stopReportLoop();
         mHandler.removeCallbacks(skipRunnable);
@@ -897,11 +959,11 @@ public class PlaybackController implements PlaybackControllerNotifiable {
 
             if (mVideoManager != null && mVideoManager.isPlaying()) mVideoManager.stopPlayback();
             if (getCurrentlyPlayingItem() != null && mCurrentStreamInfo != null) {
-                Long mbPos = mCurrentPosition * 10000;
-                reportingHelper.getValue().reportStopped(mFragment, getCurrentlyPlayingItem(), mCurrentStreamInfo, mbPos);
+                reportStopped(reportPosition);
             }
             clearPlaybackSessionOptions();
         }
+        sessionProgress.end();
     }
 
     public void refreshStream() {
@@ -1076,7 +1138,11 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     private final Runnable skipRunnable = new Runnable() {
         @Override
         public void run() {
-            if (!pendingSkip.hasPending()) return;
+            if (!pendingSkip.hasPending()) {
+                // The jump of this gesture was already made, so the gesture ends here
+                pendingSkip.clear();
+                return;
+            }
 
             if (!hasInitializedVideoManager()) {
                 pendingSkip.clear();
@@ -1108,12 +1174,20 @@ public class PlaybackController implements PlaybackControllerNotifiable {
 
         mHandler.removeCallbacks(skipRunnable);
         refreshCurrentPosition();
-        pendingSkip.request(mCurrentPosition, msec, getDuration());
+        boolean startsGesture = pendingSkip.request(mCurrentPosition, msec, getDuration());
 
         Timber.i("Skip amount requested was %s. Calculated position is %s", msec, pendingSkip.getTargetPositionMs());
         Timber.i("Duration reported as: %s current pos: %s", getDuration(), mCurrentPosition);
 
         mSeekPosition = pendingSkip.getTargetPositionMs();
+
+        if (startsGesture && !wasSeeking) {
+            // The first jump of a gesture is made right away, so the key press feels responsive.
+            // The gesture stays open, the key presses that follow are merged into the same jump.
+            seek(pendingSkip.getTargetPositionMs());
+            pendingSkip.markApplied();
+        }
+
         mHandler.postDelayed(skipRunnable, SKIP_COALESCE_DELAY);
 
         if (mFragment != null) mFragment.showSkipIndicator(pendingSkip.getOffsetMs(), msec > 0);
@@ -1151,15 +1225,15 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         if (mCurrentStreamInfo == null) return;
 
         stopReportLoop();
-        reportingHelper.getValue().reportProgress(mFragment, this, getCurrentlyPlayingItem(), getCurrentStreamInfo(), mCurrentPosition * 10000, false);
+        reportProgress(mCurrentPosition);
         mReportLoop = new Runnable() {
             @Override
             public void run() {
                 if (isPlaying()) {
                     refreshCurrentPosition();
-                    long currentTime = isLiveTv ? getTimeShiftedProgress() : mCurrentPosition;
+                    long currentTime = isLiveTv ? getTimeShiftedProgress() : getReportPositionMs();
 
-                    reportingHelper.getValue().reportProgress(mFragment, PlaybackController.this, getCurrentlyPlayingItem(), getCurrentStreamInfo(), currentTime * 10000, false);
+                    reportProgress(currentTime);
                 }
                 if (mPlaybackState != PlaybackState.UNDEFINED && mPlaybackState != PlaybackState.IDLE) {
                     mHandler.postDelayed(this, PROGRESS_REPORTING_INTERVAL);
@@ -1172,7 +1246,7 @@ public class PlaybackController implements PlaybackControllerNotifiable {
     private void startPauseReportLoop() {
         stopReportLoop();
         if (mCurrentStreamInfo == null) return;
-        reportingHelper.getValue().reportProgress(mFragment, this, getCurrentlyPlayingItem(), mCurrentStreamInfo, mCurrentPosition * 10000, true);
+        reportingHelper.getValue().reportProgress(mFragment, this, getCurrentlyPlayingItem(), mCurrentStreamInfo, getReportPositionMs() * 10000, true);
         mReportLoop = new Runnable() {
             @Override
             public void run() {
@@ -1188,7 +1262,7 @@ public class PlaybackController implements PlaybackControllerNotifiable {
                     return;
                 }
                 refreshCurrentPosition();
-                long currentTime = isLiveTv ? getTimeShiftedProgress() : mCurrentPosition;
+                long currentTime = isLiveTv ? getTimeShiftedProgress() : getReportPositionMs();
                 if (isLiveTv && !directStreamLiveTv && mFragment != null) {
                     mFragment.setSecondaryTime(getRealTimeProgress());
                 }
@@ -1279,7 +1353,15 @@ public class PlaybackController implements PlaybackControllerNotifiable {
             startReportLoop();
         }
 
-        Timber.i("Play method: %s", mCurrentStreamInfo.getPlayMethod() == PlayMethod.TRANSCODE ? "Trans" : "Direct");
+        MediaSourceInfo mediaSource = mCurrentStreamInfo.getMediaSource();
+        MediaStream videoStream = mediaSource != null ? JavaCompat.getVideoStream(mediaSource) : null;
+        Timber.i(
+                "Play method: %s, bitrate: %s, resolution: %sx%s",
+                mCurrentStreamInfo.getPlayMethod() == PlayMethod.TRANSCODE ? "Trans" : "Direct",
+                mediaSource != null ? mediaSource.getBitrate() : null,
+                videoStream != null ? videoStream.getWidth() : null,
+                videoStream != null ? videoStream.getHeight() : null
+        );
 
         if (mPlaybackState == PlaybackState.PAUSED) {
             mPlaybackState = PlaybackState.PLAYING;

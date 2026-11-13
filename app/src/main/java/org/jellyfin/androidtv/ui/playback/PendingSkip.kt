@@ -11,6 +11,7 @@ import org.jellyfin.androidtv.util.Utils
  */
 class PendingSkip {
 	private var basePositionMs = 0L
+	private var gestureOpen = false
 	private var pending = false
 
 	/**
@@ -33,19 +34,34 @@ class PendingSkip {
 	 * @param basePositionMs The playback position the current gesture started at
 	 * @param deltaMs The amount to skip, positive when fast forwarding
 	 * @param durationMs The duration of the media
+	 * @return True when the request starts a new gesture, so the jump can be made right away
 	 */
-	fun request(basePositionMs: Long, deltaMs: Long, durationMs: Long) {
-		if (!pending) {
+	fun request(basePositionMs: Long, deltaMs: Long, durationMs: Long): Boolean {
+		val startsGesture = !gestureOpen
+		if (startsGesture) {
 			this.basePositionMs = basePositionMs
 			offsetMs = 0
-			pending = true
+			gestureOpen = true
 		}
 
 		offsetMs += deltaMs
 		targetPositionMs = Utils.getSafeSeekPosition(this.basePositionMs + offsetMs, durationMs)
+		pending = true
+
+		return startsGesture
+	}
+
+	/**
+	 * Marks the current target as applied to the player, so it is not jumped to a second time.
+	 *
+	 * The gesture stays open, the key presses that follow are merged into the same jump.
+	 */
+	fun markApplied() {
+		pending = false
 	}
 
 	fun clear() {
+		gestureOpen = false
 		pending = false
 		basePositionMs = 0
 		targetPositionMs = 0

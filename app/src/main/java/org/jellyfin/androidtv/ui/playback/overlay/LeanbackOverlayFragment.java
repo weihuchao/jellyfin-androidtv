@@ -69,6 +69,9 @@ public class LeanbackOverlayFragment extends PlaybackSupportFragment {
             if (!wasVisible) {
                 // Select the action that was used last when the controls appear
                 playerGlue.focusPreferredAction();
+                // The position is only updated while the controls are visible, so it has to be
+                // refreshed when they appear
+                playerAdapter.updateCurrentPosition();
             }
         }
     }

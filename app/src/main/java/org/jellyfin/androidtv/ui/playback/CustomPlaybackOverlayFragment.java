@@ -686,8 +686,6 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
         mFadeEnabled = true;
         mHandler.removeCallbacks(mHideTask);
         mHandler.postDelayed(mHideTask, getResources().getInteger(R.integer.playback_controls_auto_hide_timeout));
-        WindowCompat.setDecorFitsSystemWindows(requireActivity().getWindow(), false);
-        WindowCompat.getInsetsController(requireActivity().getWindow(), requireActivity().getWindow().getDecorView()).hide(WindowInsetsCompat.Type.systemBars());
     }
 
     /**
@@ -1255,9 +1253,16 @@ public class CustomPlaybackOverlayFragment extends Fragment implements LiveTvGui
     }
 
     public void setCurrentTime(long time) {
-        binding.skipOverlay.setCurrentPositionMs(time);
-        if (leanbackOverlayFragment != null)
+        // The segment prompt is the only thing that needs the position while it is not shown
+        if (binding.skipOverlay.getTargetPositionMs() != null) {
+            binding.skipOverlay.setCurrentPositionMs(time);
+        }
+
+        // The controls ask the player for the position themselves, so they only need to be
+        // updated while they are visible
+        if (leanbackOverlayFragment != null && isControlsOverlayVisible()) {
             leanbackOverlayFragment.updateCurrentPosition();
+        }
     }
 
     public void setSecondaryTime(long time) {

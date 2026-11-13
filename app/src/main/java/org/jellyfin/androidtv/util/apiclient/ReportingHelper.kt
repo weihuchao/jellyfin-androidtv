@@ -7,6 +7,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import org.jellyfin.androidtv.data.compat.StreamInfo
 import org.jellyfin.androidtv.data.model.DataRefreshService
+import org.jellyfin.androidtv.ui.playback.LastPlayback
+import org.jellyfin.androidtv.ui.playback.LastPlaybackStore
 import org.jellyfin.androidtv.ui.playback.PlaybackController
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.playStateApi
@@ -23,6 +25,7 @@ import java.time.Instant
 class ReportingHelper(
 	private val dataRefreshService: DataRefreshService,
 	private val api: ApiClient,
+	private val lastPlaybackStore: LastPlaybackStore,
 ) {
 	fun reportStart(
 		lifecycleOwner: LifecycleOwner,
@@ -49,7 +52,7 @@ class ReportingHelper(
 		)
 
 		lifecycleOwner.lifecycleScope.launch(Dispatchers.IO + NonCancellable) {
-			Timber.i("Reporting ${item.name} playback started at $position")
+			Timber.i("Report start: %s at %d ticks", item.describe(), position)
 			runCatching {
 				api.playStateApi.reportPlaybackStart(info)
 			}.onFailure { error -> Timber.e(error, "Failed to report started playback!") }
@@ -81,9 +84,14 @@ class ReportingHelper(
 		)
 
 		lifecycleOwner.lifecycleScope.launch(Dispatchers.IO + NonCancellable) {
-			Timber.d("Reporting ${item.name} playback progress at $position")
+			Timber.i("Report progress: %s at %d ticks", item.describe(), position)
 			runCatching {
 				api.playStateApi.reportPlaybackProgress(info)
+			}.onSuccess {
+				// A position of zero means there is no resume point for this item
+				if (position > 0) {
+					lastPlaybackStore.save(LastPlayback(item.id, position / TICKS_PER_MILLISECOND, Instant.now()))
+				}
 			}.onFailure { error -> Timber.w(error, "Failed to report playback progress") }
 		}
 	}
@@ -99,9 +107,13 @@ class ReportingHelper(
 		)
 
 		lifecycleOwner.lifecycleScope.launch(Dispatchers.IO + NonCancellable) {
-			Timber.i("Reporting ${item.name} playback stopped at $position")
+			Timber.i("Report stop: %s at %s ticks", item.describe(), position)
 			runCatching {
 				api.playStateApi.reportPlaybackStopped(info)
+			}.onSuccess {
+				if (position != null && position > 0) {
+					lastPlaybackStore.save(LastPlayback(item.id, position / TICKS_PER_MILLISECOND, Instant.now()))
+				}
 			}.onFailure { error -> Timber.e(error, "Failed to report stopped playback!") }
 		}
 
@@ -112,5 +124,17 @@ class ReportingHelper(
 			BaseItemKind.EPISODE -> dataRefreshService.lastTvPlayback = Instant.now()
 			else -> Unit
 		}
+	}
+
+	/**
+	 * A description of the item that identifies the episode it belongs to.
+	 */
+	private fun BaseItemDto.describe(): String = when (type) {
+		BaseItemKind.EPISODE -> "$name (${seriesName} S$parentIndexNumber E$indexNumber, id=$id)"
+		else -> "$name (id=$id)"
+	}
+
+	companion object {
+		private const val TICKS_PER_MILLISECOND = 10_000L
 	}
 }
