@@ -14,7 +14,9 @@ import java.util.UUID
 fun rememberUserView(itemId: UUID): BaseItemDto? {
 	val userViewsRepository = koinInject<UserViewsRepository>()
 	val userView by remember {
-		userViewsRepository.views.map { views -> views.first { view -> view.id == itemId } }
+		// The item can be a folder below a library, which is not a user view at all, so there is no
+		// matching view and the settings are shown without a title
+		userViewsRepository.views.map { views -> views.firstOrNull { view -> view.id == itemId } }
 	}.collectAsState(null)
 	return userView
 }
