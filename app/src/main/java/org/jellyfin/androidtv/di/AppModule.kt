@@ -176,7 +176,7 @@ val appModule = module {
 	single { MarkdownRenderer(get()) }
 	single { ItemLauncher() }
 	single { KeyProcessor() }
-	single { ReportingHelper(get(), get(), get()) }
+	single { ReportingHelper(get(), get(), get(), get()) }
 	single { LastPlaybackStore(androidContext()) }
 	single { ResumeProgressSync(get(), get(), get()) }
 	single<PlaybackHelper> { SdkPlaybackHelper(get(), get(), get(), get()) }

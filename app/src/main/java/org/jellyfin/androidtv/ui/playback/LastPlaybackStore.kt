@@ -11,11 +11,13 @@ import java.util.UUID
  * @param itemId The id of the item
  * @param positionMs The position that was reported, in milliseconds
  * @param timestamp The time of the report
+ * @param userId The account the item was reported for
  */
 data class LastPlayback(
 	val itemId: UUID,
 	val positionMs: Long,
 	val timestamp: Instant,
+	val userId: UUID? = null,
 )
 
 /**
@@ -36,6 +38,7 @@ class LastPlaybackStore(context: Context) {
 			putString(KEY_ITEM_ID, playback.itemId.toString())
 			putLong(KEY_POSITION_MS, playback.positionMs)
 			putLong(KEY_TIMESTAMP, playback.timestamp.toEpochMilli())
+			putString(KEY_USER_ID, playback.userId?.toString())
 		}
 	}
 
@@ -53,6 +56,8 @@ class LastPlaybackStore(context: Context) {
 			itemId = itemId,
 			positionMs = sharedPreferences.getLong(KEY_POSITION_MS, 0L),
 			timestamp = Instant.ofEpochMilli(timestamp),
+			userId = sharedPreferences.getString(KEY_USER_ID, null)
+				?.let { runCatching { UUID.fromString(it) }.getOrNull() },
 		)
 	}
 
@@ -68,5 +73,6 @@ class LastPlaybackStore(context: Context) {
 		private const val KEY_ITEM_ID = "item_id"
 		private const val KEY_POSITION_MS = "position_ms"
 		private const val KEY_TIMESTAMP = "timestamp"
+		private const val KEY_USER_ID = "user_id"
 	}
 }

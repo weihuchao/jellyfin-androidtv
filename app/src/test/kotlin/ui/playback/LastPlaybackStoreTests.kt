@@ -18,14 +18,16 @@ class LastPlaybackStoreTests {
 	fun storeKeepsTheLastPlayback() {
 		val store = LastPlaybackStore(RuntimeEnvironment.getApplication())
 		val itemId = UUID.randomUUID()
+		val userId = UUID.randomUUID()
 		val timestamp = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 
-		store.save(LastPlayback(itemId, 600_000, timestamp))
+		store.save(LastPlayback(itemId, 600_000, timestamp, userId))
 
 		val playback = store.load()
 		playback?.itemId shouldBe itemId
 		playback?.positionMs shouldBe 600_000L
 		playback?.timestamp shouldBe timestamp
+		playback?.userId shouldBe userId
 	}
 
 	@Test

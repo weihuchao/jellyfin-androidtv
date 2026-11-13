@@ -12,7 +12,6 @@ import timber.log.Timber
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -28,18 +27,32 @@ object ResumeProgressDecision {
 	 *
 	 * @param lastPlayback The item that was reported to the server last
 	 * @param serverItemIds The ids of the items the server returned
-	 * @param serverNewestTimestamp The time the newest item of the server was played, in UTC
+	 * @param serverNewestTimestamp The time the newest item of the server was played, in the local time of the device
+	 * @param userId The account the resume point would be written to
+	 * @param zone The time zone of the device
 	 */
 	fun needsRestore(
 		lastPlayback: LastPlayback?,
 		serverItemIds: Set<UUID>,
 		serverNewestTimestamp: LocalDateTime?,
+		userId: UUID? = null,
+		zone: ZoneId = ZoneId.systemDefault(),
 	): Boolean {
 		val playback = lastPlayback ?: return false
+
+		// The record of another account must not be written to the account of the current session.
+		if (playback.userId != null && userId != null && playback.userId != userId) return false
+
+		// A position of zero would clear the resume point the server already has.
+		if (playback.positionMs <= 0) return false
+
 		if (playback.itemId in serverItemIds) return false
 
 		val newest = serverNewestTimestamp ?: return true
-		return playback.timestamp.atOffset(ZoneOffset.UTC).toLocalDateTime().isAfter(newest)
+
+		// The SDK turns the times of the server into the local time of the device, so the time of the
+		// last playback has to be turned into the local time as well before both are compared.
+		return playback.timestamp.atZone(zone).toLocalDateTime().isAfter(newest)
 	}
 }
 
@@ -69,6 +82,7 @@ class ResumeProgressSync(
 			lastPlayback = lastPlayback,
 			serverItemIds = serverItems.map { it.id }.toSet(),
 			serverNewestTimestamp = serverNewestTimestamp,
+			userId = sessionRepository.currentSession.value?.userId,
 		)
 	}
 
@@ -86,6 +100,14 @@ class ResumeProgressSync(
 				val item = api.userLibraryApi.getItem(lastPlayback.itemId).content
 				if (item.userData?.played == true) {
 					Timber.i("Resume sync: %s was watched on the server, keeping its state", item.name)
+					return@runCatching false
+				}
+				if (lastPlayback.userId != null && lastPlayback.userId != userId) {
+					Timber.i("Resume sync: %s was played by another account, keeping its state", item.name)
+					return@runCatching false
+				}
+				if (lastPlayback.positionMs <= 0) {
+					Timber.i("Resume sync: %s has no position to restore", item.name)
 					return@runCatching false
 				}
 

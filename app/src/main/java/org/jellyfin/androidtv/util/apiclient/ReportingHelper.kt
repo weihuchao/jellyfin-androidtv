@@ -5,6 +5,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import org.jellyfin.androidtv.auth.repository.SessionRepository
 import org.jellyfin.androidtv.data.compat.StreamInfo
 import org.jellyfin.androidtv.data.model.DataRefreshService
 import org.jellyfin.androidtv.ui.playback.LastPlayback
@@ -26,6 +27,7 @@ class ReportingHelper(
 	private val dataRefreshService: DataRefreshService,
 	private val api: ApiClient,
 	private val lastPlaybackStore: LastPlaybackStore,
+	private val sessionRepository: SessionRepository,
 ) {
 	fun reportStart(
 		lifecycleOwner: LifecycleOwner,
@@ -90,7 +92,7 @@ class ReportingHelper(
 			}.onSuccess {
 				// A position of zero means there is no resume point for this item
 				if (position > 0) {
-					lastPlaybackStore.save(LastPlayback(item.id, position / TICKS_PER_MILLISECOND, Instant.now()))
+					lastPlaybackStore.save(lastPlayback(item, position))
 				}
 			}.onFailure { error -> Timber.w(error, "Failed to report playback progress") }
 		}
@@ -112,7 +114,7 @@ class ReportingHelper(
 				api.playStateApi.reportPlaybackStopped(info)
 			}.onSuccess {
 				if (position != null && position > 0) {
-					lastPlaybackStore.save(LastPlayback(item.id, position / TICKS_PER_MILLISECOND, Instant.now()))
+					lastPlaybackStore.save(lastPlayback(item, position))
 				}
 			}.onFailure { error -> Timber.e(error, "Failed to report stopped playback!") }
 		}
@@ -133,6 +135,17 @@ class ReportingHelper(
 		BaseItemKind.EPISODE -> "$name (${seriesName} S$parentIndexNumber E$indexNumber, id=$id)"
 		else -> "$name (id=$id)"
 	}
+
+	/**
+	 * The playback that is remembered locally, together with the account it belongs to.
+	 */
+	private fun lastPlayback(item: BaseItemDto, position: Long): LastPlayback =
+		LastPlayback(
+			item.id,
+			position / TICKS_PER_MILLISECOND,
+			Instant.now(),
+			sessionRepository.currentSession.value?.userId,
+		)
 
 	companion object {
 		private const val TICKS_PER_MILLISECOND = 10_000L
