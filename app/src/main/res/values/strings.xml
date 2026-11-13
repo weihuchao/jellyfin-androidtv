@@ -288,6 +288,7 @@
     <string name="pref_next_up_timeout_summary">How long to wait before playing the next item</string>
     <string name="pref_next_up_timeout_title">Next up timer duration</string>
     <string name="pref_next_up_timeout_disabled">∞</string>
+    <string name="pref_next_up_timeout_no_wait">No wait</string>
     <string name="watch_now">Watch now</string>
     <string name="pref_next_up_behavior_title">Show next video info</string>
     <string name="pref_still_watching_behavior_title">Show inactivity timeout popup</string>

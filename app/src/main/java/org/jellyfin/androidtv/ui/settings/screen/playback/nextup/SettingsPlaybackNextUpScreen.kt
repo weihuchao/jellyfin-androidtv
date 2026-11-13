@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.jellyfin.androidtv.R
 import org.jellyfin.androidtv.preference.UserPreferences
-import org.jellyfin.androidtv.preference.constant.NEXTUP_TIMER_DISABLED
 import org.jellyfin.androidtv.ui.base.Text
 import org.jellyfin.androidtv.ui.base.form.Checkbox
 import org.jellyfin.androidtv.ui.base.form.RangeControl
@@ -26,6 +25,8 @@ import org.jellyfin.androidtv.ui.base.list.ListControl
 import org.jellyfin.androidtv.ui.base.list.ListSection
 import org.jellyfin.androidtv.ui.navigation.LocalRouter
 import org.jellyfin.androidtv.ui.navigation.focus.focusKey
+import org.jellyfin.androidtv.ui.playback.nextup.NextUpDecision
+import org.jellyfin.androidtv.ui.playback.nextup.NextUpTimeoutAction
 import org.jellyfin.androidtv.ui.settings.Routes
 import org.jellyfin.androidtv.ui.settings.compat.rememberPreference
 import org.jellyfin.androidtv.ui.settings.composable.SettingsColumn
@@ -87,8 +88,9 @@ fun SettingsPlaybackNextUpScreen() {
 							.height(4.dp)
 							.weight(1f),
 						interactionSource = interactionSource,
-						// 0 - 30 seconds with 1 second increment
-						min = 0f,
+						// -1 is "wait forever", 0 is "play right away", the rest is 0 - 30 seconds
+						// with 1 second increment
+						min = -1_000f,
 						max = 30_000f,
 						markers = listOf(UserPreferences.nextUpTimeout.defaultValue.toFloat()),
 						stepForward = 1_000f,
@@ -102,8 +104,11 @@ fun SettingsPlaybackNextUpScreen() {
 						modifier = Modifier.sizeIn(minWidth = 32.dp),
 						contentAlignment = Alignment.CenterEnd
 					) {
-						if (nextUpTimeout == NEXTUP_TIMER_DISABLED) Text(stringResource(R.string.pref_next_up_timeout_disabled))
-						else Text("${nextUpTimeout / 1000}s")
+						when (NextUpDecision.timeoutAction(nextUpTimeout)) {
+							NextUpTimeoutAction.WAIT_FOREVER -> Text(stringResource(R.string.pref_next_up_timeout_disabled))
+							NextUpTimeoutAction.PLAY_NOW -> Text(stringResource(R.string.pref_next_up_timeout_no_wait))
+							NextUpTimeoutAction.COUNTDOWN -> Text("${nextUpTimeout / 1000}s")
+						}
 					}
 				}
 			}

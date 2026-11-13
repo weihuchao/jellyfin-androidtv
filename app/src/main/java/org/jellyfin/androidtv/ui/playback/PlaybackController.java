@@ -25,6 +25,8 @@ import org.jellyfin.androidtv.preference.constant.StillWatchingBehavior;
 import org.jellyfin.androidtv.preference.constant.ZoomMode;
 import org.jellyfin.androidtv.ui.InteractionTrackerViewModel;
 import org.jellyfin.androidtv.ui.livetv.TvManager;
+import org.jellyfin.androidtv.ui.playback.nextup.NextItemAction;
+import org.jellyfin.androidtv.ui.playback.nextup.NextUpDecision;
 import org.jellyfin.androidtv.util.TimeUtils;
 import org.jellyfin.androidtv.util.Utils;
 import org.jellyfin.androidtv.util.apiclient.ReportingHelper;
@@ -1314,24 +1316,37 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         Timber.i("Moving to next queue item. Index: %s", (mCurrentIndex + 1));
         boolean stillWatchingEnabled = userPreferences.getValue().get(UserPreferences.Companion.getStillWatchingBehavior()) != StillWatchingBehavior.DISABLED;
         boolean nextUpEnabled = userPreferences.getValue().get(UserPreferences.Companion.getNextUpBehavior()) != NextUpBehavior.DISABLED;
-        if ((stillWatchingEnabled || nextUpEnabled) && curItem.getType() != BaseItemKind.TRAILER) {
-            mCurrentIndex++;
-            videoQueueManager.getValue().setCurrentMediaPosition(mCurrentIndex);
-            spinnerOff = false;
+        int nextUpTimeout = userPreferences.getValue().get(UserPreferences.Companion.getNextUpTimeout());
 
-            if (mFragment != null) {
-                if (stillWatchingEnabled && interactionTracker.getShowStillWatching()) {
-                    // Show "Still Watching" fragment
-                    mFragment.showStillWatching(nextItem.getId());
-                } else if (nextUpEnabled) {
-                    // Show "Next Up" fragment
-                    mFragment.showNextUp(nextItem.getId());
-                }
-            }
-            endPlayback();
-        } else {
+        NextItemAction action = curItem.getType() == BaseItemKind.TRAILER
+                ? NextItemAction.PLAY_NEXT
+                : NextUpDecision.INSTANCE.nextItemAction(
+                        stillWatchingEnabled,
+                        interactionTracker.getShowStillWatching(),
+                        nextUpEnabled,
+                        nextUpTimeout
+                );
+
+        if (action == NextItemAction.PLAY_NEXT) {
+            // Play the next item right away, without the still watching or next up screen
             next();
+            return;
         }
+
+        mCurrentIndex++;
+        videoQueueManager.getValue().setCurrentMediaPosition(mCurrentIndex);
+        spinnerOff = false;
+
+        if (mFragment != null) {
+            if (action == NextItemAction.SHOW_STILL_WATCHING) {
+                // Show "Still Watching" fragment
+                mFragment.showStillWatching(nextItem.getId());
+            } else {
+                // Show "Next Up" fragment
+                mFragment.showNextUp(nextItem.getId());
+            }
+        }
+        endPlayback();
     }
 
     @Override

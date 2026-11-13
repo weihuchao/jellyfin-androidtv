@@ -41,7 +41,6 @@ import kotlinx.coroutines.withContext
 import org.jellyfin.androidtv.R
 import org.jellyfin.androidtv.data.service.BackgroundService
 import org.jellyfin.androidtv.preference.UserPreferences
-import org.jellyfin.androidtv.preference.constant.NEXTUP_TIMER_DISABLED
 import org.jellyfin.androidtv.ui.background.AppBackground
 import org.jellyfin.androidtv.ui.base.JellyfinTheme
 import org.jellyfin.androidtv.ui.base.LocalTextStyle
@@ -140,20 +139,26 @@ fun NextUpOverlay(
 	val confirmTimer = remember { Animatable(0f) }
 	LaunchedEffect(item) {
 		val durationMillis = userPreferences[UserPreferences.nextUpTimeout]
-		if (durationMillis == NEXTUP_TIMER_DISABLED) {
-			// Make sure to cancel any running timer
-			confirmTimer.snapTo(0f)
-		} else {
-			withContext(FixedMotionDurationScale) {
-				confirmTimer.animateTo(
-					targetValue = 1f,
-					animationSpec = tween(
-						durationMillis = durationMillis,
-						easing = LinearEasing,
-					),
-				)
+		when (NextUpDecision.timeoutAction(durationMillis)) {
+			NextUpTimeoutAction.WAIT_FOREVER -> {
+				// Make sure to cancel any running timer
+				confirmTimer.snapTo(0f)
 			}
-			onConfirm()
+
+			NextUpTimeoutAction.PLAY_NOW -> onConfirm()
+
+			NextUpTimeoutAction.COUNTDOWN -> {
+				withContext(FixedMotionDurationScale) {
+					confirmTimer.animateTo(
+						targetValue = 1f,
+						animationSpec = tween(
+							durationMillis = durationMillis,
+							easing = LinearEasing,
+						),
+					)
+				}
+				onConfirm()
+			}
 		}
 	}
 

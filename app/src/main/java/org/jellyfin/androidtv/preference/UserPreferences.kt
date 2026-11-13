@@ -13,6 +13,8 @@ import org.jellyfin.androidtv.preference.constant.ClockBehavior
 import org.jellyfin.androidtv.preference.constant.HEVCLevel
 import org.jellyfin.androidtv.preference.constant.HdrOverrideMode
 import org.jellyfin.androidtv.preference.constant.NextUpBehavior
+import org.jellyfin.androidtv.preference.constant.NEXTUP_TIMER_DISABLED
+import org.jellyfin.androidtv.preference.constant.NEXTUP_TIMER_NO_WAIT
 import org.jellyfin.androidtv.preference.constant.RefreshRateSwitchingBehavior
 import org.jellyfin.androidtv.preference.constant.StillWatchingBehavior
 import org.jellyfin.androidtv.preference.constant.WatchedIndicatorBehavior
@@ -68,9 +70,9 @@ class UserPreferences(context: Context) : SharedPreferenceStore(
 
 		/**
 		 * Next up timeout before playing next item
-		 * Stored in milliseconds
+		 * Stored in milliseconds, 0 plays the next item right away and -1 waits for the user
 		 */
-		var nextUpTimeout = intPreference("next_up_timeout", 1000 * 7)
+		var nextUpTimeout = intPreference("next_up_timeout", NEXTUP_TIMER_NO_WAIT)
 
 		/**
 		 * Duration in seconds to subtract from resume time
@@ -352,6 +354,16 @@ class UserPreferences(context: Context) : SharedPreferenceStore(
 					"backdrop_behavior",
 					if (backdropEnabled) BackdropBehavior.BACKDROP_WITH_BLUR.name else BackdropBehavior.DISABLED.name
 				)
+			}
+
+			// v0.8 to v0.9
+			migration(toVersion = 10) {
+				// The next up timeout changed, 0 used to mean "wait forever" and now means
+				// "play the next item right away". Only a value the user picked is migrated,
+				// everyone else gets the new default.
+				if (it.contains("next_up_timeout") && it.getInt("next_up_timeout", NEXTUP_TIMER_NO_WAIT) == NEXTUP_TIMER_NO_WAIT) {
+					putInt("next_up_timeout", NEXTUP_TIMER_DISABLED)
+				}
 			}
 		}
 	}

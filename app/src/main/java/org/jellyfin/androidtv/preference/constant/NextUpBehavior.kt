@@ -22,4 +22,12 @@ enum class NextUpBehavior(
 	DISABLED(R.string.lbl_never),
 }
 
-const val NEXTUP_TIMER_DISABLED: Int = 0
+/**
+ * Start the next item right away, the next up screen is not shown at all.
+ */
+const val NEXTUP_TIMER_NO_WAIT: Int = 0
+
+/**
+ * The next up timer is disabled, the next up screen waits for the user to make a choice.
+ */
+const val NEXTUP_TIMER_DISABLED: Int = -1
